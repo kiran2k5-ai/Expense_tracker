@@ -60,7 +60,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     const ExpensesScreen(),
     InsightsScreen(expenses: _expenses),
     SavingsScreen(userId: widget.userId),
-    const ProfileScreen(),
+    ProfileScreen(userId: widget.userId),
+
   ];
 
   final List<BottomNavigationBarItem> _navItems = const [

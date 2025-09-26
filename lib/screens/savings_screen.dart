@@ -15,7 +15,7 @@ class SavingsScreen extends StatefulWidget {
 
 class _SavingsScreenState extends State<SavingsScreen> {
   List<Saving> savings = [];
-  List<String> categories = ['LIC', 'Chit Fund', 'Fixed Deposit', 'Post Bank'];
+  List<String> categories = ['LIC', 'Chit Fund', 'Fixed Deposit', 'Post Office Account'];
 
   @override
   void initState() {
@@ -74,7 +74,12 @@ class _SavingsScreenState extends State<SavingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("💰 My Savings")),
+      appBar: AppBar(
+        title: const Text("💰 My Savings"),
+        elevation: 0,
+        backgroundColor: Colors.deepPurple,
+      ),
+
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

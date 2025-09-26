@@ -7,7 +7,7 @@ const Expense = require('../models/Expense');
 // ✅ Get all expenses for the logged-in user
 router.get('/', auth, async (req, res) => {
   try {
-    console.log('📥 Getting expenses for userId:', req.userId); // Add this line
+
 
     const expenses = await Expense.find({ userId: req.userId });
     res.json(expenses);

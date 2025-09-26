@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-
+import 'package:local_auth/local_auth.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'main_scaffold.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,21 +15,73 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
+  final LocalAuthentication auth = LocalAuthentication();
   bool isLoading = false;
-  bool _isPasswordVisible = false;
-  Future<void> loginUser() async {
+
+  Future<String> getDeviceId() async {
+    final deviceInfo = DeviceInfoPlugin();
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      final androidInfo = await deviceInfo.androidInfo;
+      return androidInfo.id; // Unique ID for Android devices
+    } else {
+      final iosInfo = await deviceInfo.iosInfo;
+      return iosInfo.identifierForVendor ?? ''; // Unique ID for iOS devices
+    }
+  }
+
+  Future<void> authenticateWithBiometrics() async {
     setState(() => isLoading = true);
-    final url = Uri.parse('http://localhost:5000/api/auth/login');
+    
+    try {
+      // Check if biometrics is available
+      final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
+      final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
+
+      if (!canAuthenticate) {
+        Fluttertoast.showToast(msg: 'Biometric authentication not available');
+        return;
+      }
+
+      // Get available biometrics
+      final List<BiometricType> availableBiometrics = await auth.getAvailableBiometrics();
+
+      if (availableBiometrics.isEmpty) {
+        Fluttertoast.showToast(msg: 'No biometrics enrolled');
+        return;
+      }
+
+      // Authenticate with biometrics
+      final bool didAuthenticate = await auth.authenticate(
+        localizedReason: 'Please authenticate to login',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: true,
+        ),
+      );
+
+      if (didAuthenticate) {
+        // If authentication is successful, proceed with the login
+        await performServerLogin();
+      } else {
+        Fluttertoast.showToast(msg: 'Authentication failed');
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Error: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> performServerLogin() async {
+    final url = Uri.parse('http://localhost:5000/api/auth/biometric-login');
 
     try {
+      final deviceId = await getDeviceId();
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'email': emailController.text,
-          'password': passwordController.text,
+          'deviceId': deviceId,
         }),
       );
 
@@ -39,10 +92,10 @@ class _LoginScreenState extends State<LoginScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('token', token);
         await prefs.setString('userName', 'USER');
-        await prefs.setDouble('monthlyBudget', 15000); // or user-set value
+        await prefs.setDouble('monthlyBudget', 15000);
         await prefs.setInt('loggingStreak', 7);
-        // 🔓 Decode token to get userId
-        final decoded = parseJwt(token); // you'll define this function below
+
+        final decoded = parseJwt(token);
         final userId = decoded['userId'];
 
         Fluttertoast.showToast(msg: "Login successful!");
@@ -52,14 +105,11 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (_) => MainScaffold(userId: userId),
           ),
         );
-
       } else {
         Fluttertoast.showToast(msg: data['message'] ?? 'Login failed');
       }
     } catch (e) {
       Fluttertoast.showToast(msg: 'Error: $e');
-    } finally {
-      setState(() => isLoading = false);
     }
   }
 
@@ -97,55 +147,30 @@ class _LoginScreenState extends State<LoginScreen> {
                       'Welcome Back!',
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: emailController,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    StatefulBuilder(
-                      builder: (context, setStateSB) {
-                        return TextField(
-                          controller: passwordController,
-                          obscureText: !_isPasswordVisible,
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            prefixIcon: const Icon(Icons.lock),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                              ),
-                              onPressed: () {
-                                setStateSB(() {
-                                  _isPasswordVisible = !_isPasswordVisible;
-                                });
-                              },
-                            ),
-                            border: const OutlineInputBorder(),
-                          ),
-                        );
-                      },
-                    ),
-
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
-                      icon: const Icon(Icons.login, color: Colors.white),
-                      onPressed: isLoading ? null : loginUser,
+                      icon: const Icon(Icons.fingerprint, color: Colors.white),
+                      onPressed: isLoading ? null : authenticateWithBiometrics,
                       label: isLoading
                           ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                          : const Text('Login', style: TextStyle(color: Colors.white),),
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Login with Fingerprint',
+                              style: TextStyle(color: Colors.white),
+                            ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.deepPurple,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 14,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -166,6 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+
 Map<String, dynamic> parseJwt(String token) {
   final parts = token.split('.');
   if (parts.length != 3) {

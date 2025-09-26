@@ -18,14 +18,42 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   List<Expense> expenses = [];
   bool isLoading = true;
-  final double monthlyBudget = 15000; // You can make this user-configurable later
+  double monthlyBudget = 0.0;
 
   @override
   void initState() {
     super.initState();
-    fetchExpenses();
+    fetchProfile();
+    fetchExpenses(); // your existing code
   }
 
+  Future<void> fetchProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token') ?? '';
+
+      final response = await http.get(
+        Uri.parse('http://localhost:5000/api/auth/profile'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final profileData = jsonDecode(response.body);
+        setState(() {
+          monthlyBudget = profileData['monthlyBudget']?.toDouble() ?? 0.0;
+        });
+      } else {
+        print('Failed to load profile in dashboard: ${response.body}');
+      }
+    } catch (e) {
+      print('Error fetching profile in dashboard: $e');
+    }
+  }
+
+//      Uri.parse('http://localhost:5000/api/auth/profile'),
   Future<void> fetchExpenses() async {
     setState(() => isLoading = true);
     final prefs = await SharedPreferences.getInstance();
@@ -64,9 +92,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final today = DateTime.now();
     return expenses
         .where((e) =>
-    e.date.year == today.year &&
-        e.date.month == today.month &&
-        e.date.day == today.day)
+            e.date.year == today.year &&
+            e.date.month == today.month &&
+            e.date.day == today.day)
         .fold(0, (sum, e) => sum + e.amount);
   }
 
@@ -75,7 +103,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final now = DateTime.now();
     for (var e in expenses) {
       if (e.date.year == now.year && e.date.month == now.month) {
-        categoryTotals[e.category] = (categoryTotals[e.category] ?? 0) + e.amount;
+        categoryTotals[e.category] =
+            (categoryTotals[e.category] ?? 0) + e.amount;
       }
     }
 
@@ -106,6 +135,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: Colors.deepPurple,
         actions: [
           IconButton(
+            icon: const Icon(Icons.assignment),
+            onPressed: () {
+              Navigator.pushNamed(context, 'monthly-report');
+            },
+            tooltip: 'Monthly Report',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: fetchExpenses,
           )
@@ -114,43 +150,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Summary Cards
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                SummaryCard(
-                  title: 'Today\'s Spend',
-                  amount: '₹${todaySpend.toStringAsFixed(2)}',
-                  icon: Icons.today,
-                  color: Colors.blue,
-                ),
-                SummaryCard(
-                  title: 'Top Category',
-                  amount: topCategory,
-                  icon: Icons.local_dining,
-                  color: Colors.orange,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            SummaryCard(
-              title: 'Budget Usage',
-              amount:
-              '₹${monthlyTotal.toStringAsFixed(0)} / ₹${monthlyBudget.toStringAsFixed(0)}',
-              icon: Icons.trending_up,
-              color: Colors.green,
-              fullWidth: true,
-            ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Summary Cards
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      SummaryCard(
+                        title: 'Today\'s Spend',
+                        amount: '₹${todaySpend.toStringAsFixed(2)}',
+                        icon: Icons.today,
+                        color: Colors.blue,
+                      ),
+                      SummaryCard(
+                        title: 'Top Category',
+                        amount: topCategory,
+                        icon: Icons.local_dining,
+                        color: Colors.orange,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SummaryCard(
+                    title: 'Budget Usage',
+                    amount:
+                        '₹${monthlyTotal.toStringAsFixed(0)} / ₹${monthlyBudget.toStringAsFixed(0)}',
+                    icon: Icons.trending_up,
+                    color: Colors.green,
+                    fullWidth: true,
+                  ),
 
-            const SizedBox(height: 24),
-            // Chart Switcher
-            ChartSwitcher(expenses: expenses),
-          ],
-        ),
-      ),
+                  const SizedBox(height: 24),
+                  // Chart Switcher
+                  ChartSwitcher(expenses: expenses),
+                ],
+              ),
+            ),
     );
   }
 }
