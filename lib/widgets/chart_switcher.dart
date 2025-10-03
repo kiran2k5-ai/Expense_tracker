@@ -54,35 +54,86 @@ class _ChartSwitcherState extends State<ChartSwitcher> {
         const SizedBox(height: 12),
 
         // 👇 Filter Dropdown
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            DropdownButton<String>(
-              value: selectedFilter,
-              items: filters
-                  .map((f) => DropdownMenuItem(value: f, child: Text(f)))
-                  .toList(),
-              onChanged: (val) {
-                setState(() {
-                  selectedFilter = val!;
-                });
-              },
-            ),
-            Row(
-              children: ['Pie', 'Bar', 'Line'].map((type) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ChoiceChip(
-                    label: Text(type),
-                    selected: selectedChart == type,
-                    onSelected: (_) {
-                      setState(() => selectedChart = type);
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmallScreen = constraints.maxWidth < 600;
+            
+            if (isSmallScreen) {
+              // Mobile Layout - Stack vertically
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      DropdownButton<String>(
+                        value: selectedFilter,
+                        items: filters
+                            .map((f) => DropdownMenuItem(value: f, child: Text(f)))
+                            .toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            selectedFilter = val!;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Chart type selector for mobile
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: ['Pie', 'Bar', 'Line'].map((type) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(type),
+                            selected: selectedChart == type,
+                            onSelected: (_) {
+                              setState(() => selectedChart = type);
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              );
+            } else {
+              // Desktop Layout - Keep horizontal
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  DropdownButton<String>(
+                    value: selectedFilter,
+                    items: filters
+                        .map((f) => DropdownMenuItem(value: f, child: Text(f)))
+                        .toList(),
+                    onChanged: (val) {
+                      setState(() {
+                        selectedFilter = val!;
+                      });
                     },
                   ),
-                );
-              }).toList(),
-            ),
-          ],
+                  Row(
+                    children: ['Pie', 'Bar', 'Line'].map((type) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: ChoiceChip(
+                          label: Text(type),
+                          selected: selectedChart == type,
+                          onSelected: (_) {
+                            setState(() => selectedChart = type);
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              );
+            }
+          },
         ),
 
         const SizedBox(height: 16),
