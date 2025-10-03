@@ -139,6 +139,12 @@ class _MyAppState extends State<MyApp> {
   bool _isTransactionSMS(String body) {
     final lowerBody = body.toLowerCase();
     
+    // Check for City Union Bank (CUB) specific patterns
+    if (lowerBody.contains("cub") || lowerBody.contains("city union") || lowerBody.contains("cityunion")) {
+      return lowerBody.contains("debited") || lowerBody.contains("credited") ||
+             lowerBody.contains("a/c") || lowerBody.contains("account");
+    }
+    
     // Check for transaction keywords
     return lowerBody.contains("credited") || 
            lowerBody.contains("debited") || 
@@ -328,6 +334,20 @@ class _MyAppState extends State<MyApp> {
   }
 
   String? _extractMerchant(String body) {
+    // City Union Bank specific patterns
+    if (body.toLowerCase().contains('cub') || body.toLowerCase().contains('city union')) {
+      // Pattern: "for UPI/SWIGGY*ORDER" or "for AMAZON" etc.
+      RegExp cubPattern = RegExp(r'for\s+(?:UPI/)?([A-Za-z0-9\*\s]+)', caseSensitive: false);
+      final cubMatch = cubPattern.firstMatch(body);
+      if (cubMatch != null && cubMatch.group(1) != null) {
+        String merchant = cubMatch.group(1)!.trim();
+        merchant = merchant.replaceAll('*', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+        if (merchant.length > 2 && merchant.length < 50) {
+          return merchant;
+        }
+      }
+    }
+    
     // Common patterns for merchant extraction
     final patterns = [
       RegExp(r'at\s+([A-Za-z0-9\s]+)', caseSensitive: false),

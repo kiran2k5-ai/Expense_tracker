@@ -700,6 +700,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Colors.green.shade600,
             ),
             _buildSMSTestButton(
+              'City Union Bank - Debit',
+              'Dear Customer, Your A/c XX1234 is debited with Rs.2,500.00 on 03-Oct-25 for UPI/SWIGGY*ORDER. Available balance: Rs.47,500.00. -CUB',
+              Icons.remove_circle_outline,
+              Colors.blue.shade600,
+            ),
+            _buildSMSTestButton(
+              'City Union Bank - Credit',
+              'Dear Customer, Your A/c XX1234 is credited with Rs.10,000.00 on 03-Oct-25. Available balance: Rs.57,500.00. Thank you for banking with CUB.',
+              Icons.add_circle_outline,
+              Colors.teal.shade600,
+            ),
+            _buildSMSTestButton(
               'ICICI - UPI Payment',
               'Rs.850.00 paid to SWIGGY via UPI from ICICI Bank A/c XX1234. Txn ID: 425692158963.',
               Icons.payment,
