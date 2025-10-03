@@ -1,11 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:local_auth/local_auth.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'main_scaffold.dart';
+import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,17 +12,30 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _pinController = TextEditingController();
   final LocalAuthentication auth = LocalAuthentication();
   bool isLoading = false;
+  bool _obscurePin = true;
+  bool _biometricAvailable = false;
 
-  Future<String> getDeviceId() async {
-    final deviceInfo = DeviceInfoPlugin();
-    if (Theme.of(context).platform == TargetPlatform.android) {
-      final androidInfo = await deviceInfo.androidInfo;
-      return androidInfo.id; // Unique ID for Android devices
-    } else {
-      final iosInfo = await deviceInfo.iosInfo;
-      return iosInfo.identifierForVendor ?? ''; // Unique ID for iOS devices
+  // Default PIN for demo purposes - in real app, this should be configurable
+  static const String defaultPin = "1234";
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometricAvailability();
+  }
+
+  Future<void> _checkBiometricAvailability() async {
+    try {
+      final bool isAvailable = await auth.isDeviceSupported();
+      final bool canCheckBiometrics = await auth.canCheckBiometrics;
+      setState(() {
+        _biometricAvailable = isAvailable && canCheckBiometrics;
+      });
+    } catch (e) {
+      print('Error checking biometric availability: $e');
     }
   }
 
@@ -33,37 +43,47 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => isLoading = true);
     
     try {
-      // Check if biometrics is available
-      final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
-      final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
-
-      if (!canAuthenticate) {
-        Fluttertoast.showToast(msg: 'Biometric authentication not available');
-        return;
-      }
-
-      // Get available biometrics
-      final List<BiometricType> availableBiometrics = await auth.getAvailableBiometrics();
-
-      if (availableBiometrics.isEmpty) {
-        Fluttertoast.showToast(msg: 'No biometrics enrolled');
-        return;
-      }
-
-      // Authenticate with biometrics
       final bool didAuthenticate = await auth.authenticate(
-        localizedReason: 'Please authenticate to login',
+        localizedReason: 'Please authenticate to access your expense tracker',
         options: const AuthenticationOptions(
           stickyAuth: true,
-          biometricOnly: true,
+          biometricOnly: false,
         ),
       );
 
       if (didAuthenticate) {
-        // If authentication is successful, proceed with the login
-        await performServerLogin();
+        await _performLogin();
       } else {
-        Fluttertoast.showToast(msg: 'Authentication failed');
+        Fluttertoast.showToast(msg: 'Biometric authentication failed');
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Biometric error: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> authenticateWithPin() async {
+    if (_pinController.text.isEmpty) {
+      Fluttertoast.showToast(msg: 'Please enter your PIN');
+      return;
+    }
+
+    setState(() => isLoading = true);
+    
+    try {
+      // Get stored PIN from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      String? storedPin = prefs.getString('user_pin');
+      
+      // If no PIN is stored, use default PIN
+      storedPin ??= defaultPin;
+
+      if (_pinController.text == storedPin) {
+        await _performLogin();
+      } else {
+        Fluttertoast.showToast(msg: 'Incorrect PIN. Please try again.');
+        _pinController.clear();
       }
     } catch (e) {
       Fluttertoast.showToast(msg: 'Error: $e');
@@ -72,45 +92,94 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> performServerLogin() async {
-    final url = Uri.parse('http://localhost:5000/api/auth/biometric-login');
-
+  Future<void> _performLogin() async {
     try {
-      final deviceId = await getDeviceId();
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'deviceId': deviceId,
-        }),
-      );
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['token'] != null) {
-        final token = data['token'];
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', token);
-        await prefs.setString('userName', 'USER');
-        await prefs.setDouble('monthlyBudget', 15000);
-        await prefs.setInt('loggingStreak', 7);
-
-        final decoded = parseJwt(token);
-        final userId = decoded['userId'];
-
-        Fluttertoast.showToast(msg: "Login successful!");
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => MainScaffold(userId: userId),
-          ),
-        );
-      } else {
-        Fluttertoast.showToast(msg: data['message'] ?? 'Login failed');
+      // Save login session
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userName', 'Kiran');
+      await prefs.setDouble('monthlyBudget', 15000);
+      await prefs.setInt('loggingStreak', 7);
+      
+      // Initialize account balance if not set
+      final currentBalance = prefs.getDouble('accountBalance');
+      if (currentBalance == null) {
+        await prefs.setDouble('accountBalance', 50000.0); // Default balance
       }
+
+      Fluttertoast.showToast(msg: "Login successful!");
+      
+      // Navigate to dashboard
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const DashboardScreen(),
+        ),
+      );
     } catch (e) {
-      Fluttertoast.showToast(msg: 'Error: $e');
+      Fluttertoast.showToast(msg: 'Login error: $e');
     }
+  }
+
+  Future<void> _showChangePinDialog() async {
+    final TextEditingController newPinController = TextEditingController();
+    final TextEditingController confirmPinController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Set New PIN'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: newPinController,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'New PIN',
+                hintText: 'Enter 4-6 digit PIN',
+              ),
+            ),
+            TextField(
+              controller: confirmPinController,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'Confirm PIN',
+                hintText: 'Re-enter PIN',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (newPinController.text.length < 4) {
+                Fluttertoast.showToast(msg: 'PIN must be at least 4 digits');
+                return;
+              }
+              if (newPinController.text != confirmPinController.text) {
+                Fluttertoast.showToast(msg: 'PINs do not match');
+                return;
+              }
+              
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('user_pin', newPinController.text);
+              Fluttertoast.showToast(msg: 'PIN set successfully');
+              Navigator.pop(context);
+            },
+            child: const Text('Set PIN'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -140,46 +209,132 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const CircleAvatar(
                       radius: 40,
-                      backgroundImage: AssetImage('assests/profile.jpg'),
+                      backgroundColor: Colors.deepPurple,
+                      child: Icon(
+                        Icons.account_balance_wallet,
+                        size: 40,
+                        color: Colors.white,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     const Text(
                       'Welcome Back!',
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.fingerprint, color: Colors.white),
-                      onPressed: isLoading ? null : authenticateWithBiometrics,
-                      label: isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Login with Fingerprint',
-                              style: TextStyle(color: Colors.white),
+                    const Text(
+                      'Enter your PIN to access your expense tracker',
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: TextField(
+                        controller: _pinController,
+                        obscureText: _obscurePin,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          labelText: 'PIN',
+                          hintText: 'Enter your 4-6 digit PIN',
+                          counterText: '',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePin ? Icons.visibility : Icons.visibility_off,
                             ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 14,
+                            onPressed: () {
+                              setState(() {
+                                _obscurePin = !_obscurePin;
+                              });
+                            },
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        onSubmitted: (_) => authenticateWithPin(),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.lock_open, color: Colors.white),
+                        onPressed: isLoading ? null : authenticateWithPin,
+                        label: isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Login with PIN',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 14,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
+                    
+                    // Fingerprint option
+                    if (_biometricAvailable) ...[
+                      const SizedBox(height: 12),
+                      const Row(
+                        children: [
+                          Expanded(child: Divider()),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: Text('OR', style: TextStyle(color: Colors.grey)),
+                          ),
+                          Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.fingerprint, color: Colors.deepPurple),
+                          onPressed: isLoading ? null : authenticateWithBiometrics,
+                          label: const Text(
+                            'Login with Fingerprint',
+                            style: TextStyle(color: Colors.deepPurple),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.deepPurple),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 14,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     TextButton(
-                      onPressed: () => Navigator.pushNamed(context, '/register'),
-                      child: const Text("Don't have an account? Register"),
+                      onPressed: _showChangePinDialog,
+                      child: const Text("Change PIN"),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Default PIN: 1234',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -192,18 +347,4 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-Map<String, dynamic> parseJwt(String token) {
-  final parts = token.split('.');
-  if (parts.length != 3) {
-    throw Exception('Invalid token');
-  }
-
-  final payload = base64Url.normalize(parts[1]);
-  final payloadMap = json.decode(utf8.decode(base64Url.decode(payload)));
-
-  if (payloadMap is! Map<String, dynamic>) {
-    throw Exception('Invalid payload');
-  }
-
-  return payloadMap;
-}
+// Remove the parseJwt function as it's no longer needed

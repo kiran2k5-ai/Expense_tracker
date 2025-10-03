@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'dart:convert';
@@ -48,46 +47,50 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-
-    if (token == null) {
-      Fluttertoast.showToast(msg: "No token found. Please login again.");
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/login');
-      return;
-    }
-
-    final isEditing = widget.expense != null;
-    final url = isEditing
-        ? Uri.parse('http://localhost:5000/api/expenses/${widget.expense!.id}')
-        : Uri.parse('http://localhost:5000/api/expenses');
-
-    final method = isEditing ? http.put : http.post;
-
     try {
-      final response = await method(
-        url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'title': title.trim(),
-          'amount': amount,
-          'category': category,
-          'date': selectedDate.toIso8601String(),
-        }),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        Fluttertoast.showToast(
-            msg: isEditing ? "Expense updated!" : "Expense added!");
-        if (mounted) Navigator.pop(context);
-      } else {
-        print("Response error: ${response.body}");
-        Fluttertoast.showToast(msg: "Failed to submit.");
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load existing expenses
+      String? expensesJson = prefs.getString('expenses');
+      List<Expense> expenses = [];
+      if (expensesJson != null) {
+        List<dynamic> expensesList = jsonDecode(expensesJson);
+        expenses = expensesList.map((e) => Expense.fromJson(e)).toList();
       }
+
+      final isEditing = widget.expense != null;
+      
+      if (isEditing) {
+        // Update existing expense
+        int index = expenses.indexWhere((e) => e.id == widget.expense!.id);
+        if (index != -1) {
+          expenses[index] = Expense(
+            id: widget.expense!.id,
+            title: title.trim(),
+            amount: amount!,
+            category: category,
+            date: selectedDate,
+          );
+        }
+      } else {
+        // Add new expense
+        final newExpense = Expense(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: title.trim(),
+          amount: amount!,
+          category: category,
+          date: selectedDate,
+        );
+        expenses.insert(0, newExpense); // Insert at beginning for recent first
+      }
+
+      // Save back to local storage
+      String updatedExpensesJson = jsonEncode(expenses.map((e) => e.toJson()).toList());
+      await prefs.setString('expenses', updatedExpensesJson);
+
+      Fluttertoast.showToast(
+          msg: isEditing ? "Expense updated!" : "Expense added!");
+      if (mounted) Navigator.pop(context, true); // Return true to indicate success
     } catch (e) {
       Fluttertoast.showToast(msg: "Error: $e");
     }
